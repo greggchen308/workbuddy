@@ -1,7 +1,7 @@
 # workbuddy-siyuan-mcp
 
-A local **stdio** MCP server that gives a Tencent WorkBuddy agent scoped access to Gregg's
-SiYuan vault at `gcnotes.zeabur.app`, without handing it the raw full-scope SiYuan API token
+A local **stdio** MCP server that gives a Tencent WorkBuddy agent scoped access to user's
+SiYuan vault at `<user_specified_domain>.<domain_site>`, without handing it the raw full-scope SiYuan API token
 or letting it improvise around the write-safety rules in the `zeaburvps` repo's `CLAUDE.md`
 and `.claude/skills/siyuan-architect/`.
 
