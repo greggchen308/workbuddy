@@ -56,6 +56,23 @@ function binaryArch(path) {
   return null;
 }
 
+/**
+ * Is Rosetta 2 installed, so x86_64 binaries can execute on this machine?
+ *
+ * This is what separates "an Intel Node will not run here at all" from "it runs
+ * translated, just slower". Without it the check below reports a hard failure on
+ * a machine that is in fact perfectly functional, which is worse than no check.
+ */
+function rosettaAvailable() {
+  if (existsSync("/Library/Apple/usr/share/rosetta/rosetta")) return true;
+  try {
+    execFileSync("/usr/bin/arch", ["-x86_64", "/usr/bin/true"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 1. The runtime this script is executing under
 // ---------------------------------------------------------------------------
@@ -74,6 +91,7 @@ info("process.arch", `${process.arch}  (platform ${process.platform})`);
 const machineArch = sh("/usr/bin/uname", ["-m"]);
 const translated = sh("/usr/sbin/sysctl", ["-n", "sysctl.proc_translated"]) === "1";
 const appleSilicon = sh("/usr/sbin/sysctl", ["-n", "hw.optional.arm64"]) === "1";
+const rosetta = machineArch === "arm64" ? rosettaAvailable() : false;
 
 if (!machineArch) {
   warn("Machine architecture", "could not determine (uname unavailable)");
@@ -103,8 +121,12 @@ if (machineArch === "arm64" && process.arch === "x64") {
   info("Node architecture", `${process.arch} on ${machineArch ?? "unknown"}`);
 }
 
-if (appleSilicon && !translated && process.arch === "x64") {
-  warn("Rosetta 2", "not installed -- x86_64 binaries cannot execute on this machine");
+if (machineArch === "arm64") {
+  if (rosetta) {
+    info("Rosetta 2", "installed -- x86_64 binaries can run, translated");
+  } else {
+    warn("Rosetta 2", "not installed -- x86_64 binaries cannot execute on this machine");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -124,12 +146,22 @@ if (!nodeBin) {
   if (!arch) {
     warn("CODEBUDDY_NODE_BIN", `${nodeBin} (could not read architecture)`);
   } else if (machineArch === "arm64" && arch === "x86_64") {
-    fail(
-      "CODEBUDDY_NODE_BIN",
-      `${nodeBin} is x86_64 on arm64 hardware. WorkBuddy will fail to spawn the ` +
-        `connector. Point the server's "command" at a universal/native Node instead, ` +
-        `e.g. /usr/local/bin/node, or reinstall WorkBuddy's arm64 runtimes.`
-    );
+    if (rosetta) {
+      warn(
+        "CODEBUDDY_NODE_BIN",
+        `${nodeBin} is x86_64 on arm64 hardware, but Rosetta 2 is installed, so it ` +
+          `runs translated. WorkBuddy can spawn the connector. A native Node ` +
+          `(e.g. /usr/local/bin/node) is still faster.`
+      );
+    } else {
+      fail(
+        "CODEBUDDY_NODE_BIN",
+        `${nodeBin} is x86_64 on arm64 hardware and Rosetta 2 is NOT installed. ` +
+          `WorkBuddy will fail to spawn the connector. Point the server's "command" at ` +
+          `a universal/native Node instead, e.g. /usr/local/bin/node, or reinstall ` +
+          `WorkBuddy's arm64 runtimes.`
+      );
+    }
   } else {
     pass("CODEBUDDY_NODE_BIN", `${nodeBin} (${arch})`);
   }
@@ -160,8 +192,16 @@ if (!existsSync(mcpPath)) {
           fail("mcp.json command", `${cmd} does not exist`);
         } else {
           const arch = binaryArch(cmd);
-          if (machineArch === "arm64" && arch === "x86_64") {
-            fail("mcp.json command", `${cmd} is x86_64 on arm64 hardware`);
+          if (machineArch === "arm64" && arch === "x86_64" && !rosetta) {
+            fail(
+              "mcp.json command",
+              `${cmd} is x86_64 on arm64 hardware, and Rosetta 2 is not installed`
+            );
+          } else if (machineArch === "arm64" && arch === "x86_64") {
+            warn(
+              "mcp.json command",
+              `${cmd} is x86_64 -- runs translated under Rosetta; prefer a native Node`
+            );
           } else {
             pass("mcp.json command", `${cmd}${arch ? ` (${arch})` : ""}`);
           }
