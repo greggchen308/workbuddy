@@ -80,14 +80,41 @@ npm run build
 
 This produces `dist/index.js`. Note its absolute path.
 
-Verify before wiring it into WorkBuddy — `doctor.mjs` checks the runtime, the
-architecture of the Node WorkBuddy will actually spawn, your `mcp.json` entry, and live
-connectivity in one pass:
+### If `npm` reports "Bad CPU type in executable"
+
+`npm` is a script whose shebang is `#!/usr/bin/env node`. If a wrong-architecture `node`
+sits earlier on `PATH` than a working one, **every `npm` command fails** — including
+`npm install` and `npm run build` — even though a perfectly good Node is installed
+elsewhere. Put the working Node's directory first:
+
+```bash
+PATH="/usr/local/bin:$PATH" npm install
+PATH="/usr/local/bin:$PATH" npm run build
+```
+
+Or skip `npm` entirely — `tsc` needs nothing but a Node:
+
+```bash
+node node_modules/typescript/bin/tsc -p .
+```
+
+## Verifying it works
+
+`doctor.mjs` inspects the runtime, the architecture of the Node WorkBuddy will actually
+spawn, your `mcp.json` entry, and live API connectivity:
 
 ```bash
 SIYUAN_API_URL=https://gcnotes.zeabur.app \
 SIYUAN_API_TOKEN=<your SiYuan API token> \
 node doctor.mjs
+```
+
+Add `--spawn` to go further and prove it end-to-end — this launches the configured
+`command`/`args`/`env` exactly as WorkBuddy would, performs a real MCP handshake, and issues
+a live read:
+
+```bash
+node doctor.mjs --spawn
 ```
 
 Exit code `0` means usable; `1` means it will not load, and the failing line says why.
@@ -219,7 +246,7 @@ actually need to exercise the write path and are prepared to clean up afterwards
 | `src/tools/write.ts` | `create_doc`, `append_block`, `update_child_block` — scope-checked and read-back verified. |
 | `src/tools/assets.ts` | `siyuan_write_asset` — `putFile` + SHA-256 read-back. No delete counterpart, by design. |
 | `src/tools/kanban.ts` | The 3 "OpenClaw Open Backlog" board tools. |
-| `doctor.mjs` | Preflight: runtime, Node architecture, `mcp.json`, live connectivity. |
+| `doctor.mjs` | Preflight: runtime, Node architecture, `mcp.json`, live connectivity. `--spawn` also launches the server for real. |
 | `smoke-test.mjs` | Live guard/behaviour harness. Write-free by default. |
 
 `dist/` and `node_modules/` are gitignored — build locally with `npm run build`.

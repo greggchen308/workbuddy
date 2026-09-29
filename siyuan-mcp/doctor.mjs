@@ -5,7 +5,8 @@
  * Run this FIRST whenever the connector stops loading in WorkBuddy, and after any
  * macOS migration or Node upgrade:
  *
- *     node doctor.mjs
+ *     node doctor.mjs            # inspect configuration
+ *     node doctor.mjs --spawn    # also launch the server and perform a live read
  *
  * Why this exists: this connector is pure JavaScript and has no native code, so it
  * runs identically on Intel and Apple Silicon. What breaks is the *Node that launches
@@ -25,6 +26,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const MIN_NODE = [18, 17, 0];
+const SPAWN_CHECK = process.argv.includes("--spawn");
 
 const rows = [];
 const pass = (label, detail = "") => rows.push({ s: "PASS", label, detail });
@@ -235,6 +237,64 @@ if (!url || !token) {
   } catch (e) {
     fail("Authentication", `could not list notebooks: ${e.message}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// 6. Live spawn (--spawn) -- run the configured command exactly as WorkBuddy would
+//
+// Everything above inspects configuration. This section is the only one that
+// proves the thing actually works: it launches `command` + `args` with the
+// entry's own `env`, performs a real MCP handshake, and issues a live read.
+// Opt-in because it needs node_modules present (for the MCP SDK) and takes a
+// couple of seconds.
+// ---------------------------------------------------------------------------
+if (SPAWN_CHECK) {
+  let entry = null;
+  try {
+    entry = JSON.parse(readFileSync(mcpPath, "utf8"))?.mcpServers?.siyuan ?? null;
+  } catch {
+    /* unreadable config is already reported above */
+  }
+
+  if (!entry?.command) {
+    fail("Live spawn", "no usable siyuan entry in mcp.json to spawn");
+  } else {
+    let client;
+    try {
+      const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+      const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+
+      const transport = new StdioClientTransport({
+        command: entry.command,
+        args: entry.args ?? [],
+        env: { ...process.env, ...(entry.env ?? {}) },
+      });
+      client = new Client({ name: "doctor", version: "1.0.0" });
+      await client.connect(transport);
+
+      const tools = await client.listTools();
+      pass("Live spawn", `MCP handshake OK, ${tools.tools.length} tools registered`);
+
+      const nb = await client.callTool({ name: "siyuan_list_notebooks", arguments: {} });
+      const text = nb?.content?.[0]?.text ?? "";
+      const count = (text.match(/"name":/g) ?? []).length;
+      if (count > 0) pass("Live read", `siyuan_list_notebooks returned ${count} notebooks`);
+      else fail("Live read", "siyuan_list_notebooks returned no notebooks");
+    } catch (e) {
+      const hint = /Cannot find module/.test(e.message)
+        ? " -- run `npm install` first (see README on npm and architecture)"
+        : "";
+      fail("Live spawn", `could not launch or serve: ${e.message}${hint}`);
+    } finally {
+      try {
+        await client?.close();
+      } catch {
+        /* best effort */
+      }
+    }
+  }
+} else {
+  info("Live spawn", "skipped -- re-run with --spawn to actually launch the server");
 }
 
 // ---------------------------------------------------------------------------

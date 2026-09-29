@@ -12,6 +12,7 @@
     "start": "node dist/index.js",
     "dev": "tsc -p . --watch",
     "doctor": "node doctor.mjs",
+    "doctor:spawn": "node doctor.mjs --spawn",
     "smoke": "node smoke-test.mjs"
   },
   "dependencies": {
