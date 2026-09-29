@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { registerReadTools } from "./tools/read.js";
 import { registerWriteTools } from "./tools/write.js";
 import { registerKanbanTools } from "./tools/kanban.js";
+import { registerAssetTools } from "./tools/assets.js";
 
 if (!process.env.SIYUAN_API_URL || !process.env.SIYUAN_API_TOKEN) {
   console.error(
@@ -21,6 +22,7 @@ const server = new McpServer({
 registerReadTools(server);
 registerWriteTools(server);
 registerKanbanTools(server);
+registerAssetTools(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
